@@ -1,4 +1,5 @@
 # Keep local environments, secrets, caches, and logs out of the container build context.
+.git/
 .venv/
 __pycache__/
 _pycache_/
@@ -9,9 +10,10 @@ _pycache_/
 *.pyo
 *.pyd
 *.log
-.env
-.env.*
-!.env.example
-.git/
+backend/.env
+backend/.env.*
+!backend/.env.example
 service-account*.json
 gcp-key*.json
+backend/.run-*.log
+frontend/.run-*.log

@@ -384,8 +384,8 @@
           <h1>Tourist Place Finder Agent</h1>
           <p class="hero-copy">
             Discover five standout places, get a realistic one-day route, and surface
-            practical tips in a single pass. The frontend is a single HTML file, while
-            the backend runs a multi-agent ADK workflow ready for Cloud Run.
+            practical tips in a single pass. The frontend is bundled into the same
+            FastAPI service, so one container can run the full experience on Cloud Run.
           </p>
           <div class="hero-stats">
             <div class="stat"><strong>5</strong><span>curated place cards per search</span></div>
@@ -482,7 +482,9 @@
     </main>
 
     <script>
-      const API_BASE = "http://localhost:8000";
+      const API_BASE = window.TOURIST_AGENT_API_BASE || (
+        window.location.protocol === "file:" ? "http://localhost:8000" : window.location.origin
+      );
 
       const loadingMessages = [
         "Scanning standout experiences",

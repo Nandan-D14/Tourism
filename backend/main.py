@@ -13,6 +13,8 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -20,6 +22,9 @@ from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
+FRONTEND_INDEX = FRONTEND_DIR / "index.html"
 load_dotenv(BASE_DIR / ".env", override=False)
 
 from tourist_agent import root_agent
@@ -335,6 +340,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _frontend_ready() -> bool:
+    """Returns whether the bundled frontend is available on disk."""
+
+    return FRONTEND_INDEX.is_file()
+
+
+if FRONTEND_DIR.is_dir():
+    app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend() -> FileResponse:
+    """Serves the bundled frontend application from the same container."""
+
+    if not _frontend_ready():
+        raise HTTPException(status_code=404, detail="Frontend bundle is not available.")
+    return FileResponse(FRONTEND_INDEX)
+
+
+@app.get("/app", include_in_schema=False)
+async def serve_frontend_alias() -> FileResponse:
+    """Serves the bundled frontend from a stable alias path."""
+
+    return await serve_frontend()
 
 
 @app.get("/health")

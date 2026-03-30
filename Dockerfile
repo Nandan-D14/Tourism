@@ -1,17 +1,18 @@
-# Container image for the Tourist Place Finder backend on Cloud Run.
+# Single-container image for the Tourist Place Finder web app and API.
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /app/backend
 
 RUN useradd --create-home --shell /bin/bash appuser
 
-COPY requirements.txt ./
+COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend /app/backend
+COPY frontend /app/frontend
 
 RUN chown -R appuser:appuser /app
 USER appuser
