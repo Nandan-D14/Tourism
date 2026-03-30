@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+_pycache_/
+*.pyc
+*.egg-info/
+*.pem
+*.key
+service-account*.json
+gcp-key*.json
+.DS_Store
+node_modules/
+backend/.run-*.log
+frontend/.run-*.log

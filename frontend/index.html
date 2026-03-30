@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tourist Place Finder Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0c0d10;
+        --panel: rgba(18, 20, 25, 0.9);
+        --panel-strong: rgba(26, 29, 36, 0.96);
+        --line: rgba(240, 165, 0, 0.18);
+        --text: #f6f2e8;
+        --muted: #b7ad99;
+        --accent: #f0a500;
+        --accent-soft: rgba(240, 165, 0, 0.15);
+        --danger: #ff7d7d;
+        --danger-line: rgba(255, 125, 125, 0.42);
+        --shadow: 0 28px 70px rgba(0, 0, 0, 0.45);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "DM Sans", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(240, 165, 0, 0.18), transparent 32%),
+          radial-gradient(circle at bottom right, rgba(74, 133, 255, 0.14), transparent 26%),
+          linear-gradient(160deg, #090a0d 0%, #12151b 55%, #090a0d 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 26px 26px;
+        mask-image: radial-gradient(circle at center, black 35%, transparent 88%);
+        pointer-events: none;
+      }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 32px auto 48px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 24px;
+        align-items: stretch;
+      }
+
+      .hero-card, .search-card, .results-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .hero-card {
+        padding: 34px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .hero-card::after {
+        content: "";
+        position: absolute;
+        width: 240px;
+        height: 240px;
+        right: -80px;
+        top: -60px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(240, 165, 0, 0.32), transparent 70%);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        border: 1px solid rgba(240, 165, 0, 0.35);
+        color: var(--accent);
+        font-size: 0.92rem;
+        letter-spacing: 0.02em;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 16px rgba(240, 165, 0, 0.65);
+      }
+
+      h1 {
+        margin: 18px 0 14px;
+        font-family: "Playfair Display", serif;
+        font-size: clamp(2.4rem, 5vw, 4.5rem);
+        line-height: 0.95;
+      }
+
+      .hero-copy {
+        max-width: 640px;
+        color: var(--muted);
+        font-size: 1.03rem;
+        line-height: 1.75;
+      }
+
+      .hero-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 28px;
+      }
+
+      .stat {
+        padding: 18px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .stat strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 1.6rem;
+        color: var(--accent);
+      }
+
+      .stat span { color: var(--muted); font-size: 0.93rem; }
+      .search-card { padding: 28px; }
+      .card-title { margin: 0 0 10px; font-family: "Playfair Display", serif; font-size: 1.7rem; }
+      .card-copy { margin: 0 0 22px; color: var(--muted); line-height: 1.7; }
+      .field-grid { display: grid; gap: 16px; }
+      label { display: grid; gap: 9px; color: var(--muted); font-size: 0.92rem; }
+
+      input {
+        width: 100%;
+        padding: 15px 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(8, 9, 12, 0.78);
+        color: var(--text);
+        font: inherit;
+        transition: border-color 0.2s ease, transform 0.2s ease;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: rgba(240, 165, 0, 0.55);
+        transform: translateY(-1px);
+      }
+
+      .chip-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 22px; }
+
+      .chip {
+        border: 1px solid rgba(240, 165, 0, 0.22);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        padding: 10px 14px;
+        border-radius: 999px;
+        font: inherit;
+        cursor: pointer;
+        transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      }
+
+      .chip:hover, .chip.active {
+        transform: translateY(-1px);
+        border-color: rgba(240, 165, 0, 0.58);
+        background: rgba(240, 165, 0, 0.11);
+      }
+
+      .action-row { display: flex; gap: 12px; align-items: center; }
+
+      .primary-btn {
+        min-width: 180px;
+        padding: 15px 18px;
+        border: none;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #f0a500 0%, #ffcc52 100%);
+        color: #111215;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 20px 40px rgba(240, 165, 0, 0.22);
+      }
+
+      .primary-btn:hover { transform: translateY(-1px); }
+      .helper-text { color: var(--muted); font-size: 0.9rem; }
+      .status-panels { display: grid; gap: 16px; margin: 22px 0; }
+      .loading-box, .error-box { display: none; padding: 18px 20px; border-radius: 18px; }
+      .loading-box.visible, .error-box.visible { display: flex; }
+
+      .loading-box {
+        align-items: center;
+        gap: 16px;
+        background: rgba(240, 165, 0, 0.07);
+        border: 1px solid rgba(240, 165, 0, 0.22);
+      }
+
+      .spinner {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 3px solid rgba(240, 165, 0, 0.2);
+        border-top-color: var(--accent);
+        animation: spin 0.9s linear infinite;
+      }
+
+      .loading-copy strong, .error-box strong { display: block; margin-bottom: 4px; }
+      .loading-copy span, .error-box span { color: var(--muted); }
+
+      .error-box {
+        gap: 14px;
+        align-items: flex-start;
+        border: 1px solid var(--danger-line);
+        background: rgba(146, 33, 33, 0.14);
+      }
+
+      .error-icon {
+        width: 34px;
+        height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(255, 125, 125, 0.15);
+        color: var(--danger);
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      .results-shell { display: none; margin-top: 12px; }
+      .results-shell.visible { display: grid; gap: 24px; }
+      .results-card { padding: 26px; }
+
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-end;
+        margin-bottom: 20px;
+      }
+
+      .section-head h2 { margin: 0; font-family: "Playfair Display", serif; font-size: 1.9rem; }
+      .section-head p { margin: 6px 0 0; color: var(--muted); }
+
+      .tagline {
+        padding: 9px 14px;
+        border-radius: 999px;
+        background: rgba(240, 165, 0, 0.11);
+        border: 1px solid rgba(240, 165, 0, 0.25);
+        color: var(--accent);
+        white-space: nowrap;
+      }
+
+      .place-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+      }
+
+      .place-card {
+        padding: 20px;
+        border-radius: 20px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        min-height: 100%;
+      }
+
+      .place-card h3 { margin: 0 0 10px; font-size: 1.18rem; }
+      .place-card p { margin: 0; color: var(--muted); line-height: 1.7; }
+      .badge-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+      .badge { padding: 7px 10px; border-radius: 999px; background: rgba(240, 165, 0, 0.1); color: var(--accent); font-size: 0.84rem; }
+      .tip-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.06); font-size: 0.92rem; }
+      .timeline { display: grid; gap: 14px; }
+
+      .timeline-item {
+        position: relative;
+        display: grid;
+        grid-template-columns: 64px 1fr;
+        gap: 16px;
+        padding: 18px;
+        border-radius: 20px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .timeline-item::before {
+        content: "";
+        position: absolute;
+        left: 49px;
+        top: 100%;
+        width: 2px;
+        height: 16px;
+        background: linear-gradient(180deg, rgba(240, 165, 0, 0.55), transparent);
+      }
+
+      .timeline-item:last-child::before { display: none; }
+
+      .slot-icon {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: rgba(240, 165, 0, 0.12);
+        border: 1px solid rgba(240, 165, 0, 0.28);
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .slot-label { margin: 8px 0 0; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; }
+      .timeline-item h3 { margin: 0; font-size: 1.18rem; }
+      .slot-time { margin-top: 6px; color: var(--accent); font-weight: 600; }
+      .slot-activity, .slot-note { margin-top: 10px; color: var(--muted); line-height: 1.7; }
+      .tips-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+
+      .tip-card {
+        padding: 20px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, rgba(240, 165, 0, 0.08), rgba(255, 255, 255, 0.02)), var(--panel-strong);
+        border: 1px solid rgba(240, 165, 0, 0.16);
+      }
+
+      .tip-card strong {
+        display: inline-flex;
+        width: 34px;
+        height: 34px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        background: rgba(240, 165, 0, 0.12);
+        color: var(--accent);
+        margin-bottom: 12px;
+      }
+
+      .tip-card p { margin: 0; color: var(--muted); line-height: 1.75; }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      @media (max-width: 900px) {
+        .hero { grid-template-columns: 1fr; }
+        .hero-stats { grid-template-columns: 1fr; }
+        .section-head { flex-direction: column; align-items: flex-start; }
+      }
+
+      @media (max-width: 640px) {
+        .shell { width: min(100% - 24px, 1180px); margin-top: 20px; }
+        .hero-card, .search-card, .results-card { border-radius: 22px; }
+        .hero-card, .search-card, .results-card, .timeline-item, .place-card, .tip-card { padding-left: 18px; padding-right: 18px; }
+        .timeline-item { grid-template-columns: 1fr; }
+        .timeline-item::before { display: none; }
+        .action-row { flex-direction: column; align-items: stretch; }
+        .primary-btn { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <article class="hero-card">
+          <div class="eyebrow">Hackathon-ready ADK + Cloud Run stack</div>
+          <h1>Tourist Place Finder Agent</h1>
+          <p class="hero-copy">
+            Discover five standout places, get a realistic one-day route, and surface
+            practical tips in a single pass. The frontend is a single HTML file, while
+            the backend runs a multi-agent ADK workflow ready for Cloud Run.
+          </p>
+          <div class="hero-stats">
+            <div class="stat"><strong>5</strong><span>curated place cards per search</span></div>
+            <div class="stat"><strong>1 Day</strong><span>time-slotted route with travel notes</span></div>
+            <div class="stat"><strong>3 Tips</strong><span>practical local advice at the end</span></div>
+          </div>
+        </article>
+
+        <aside class="search-card">
+          <h2 class="card-title">Plan a Focused City Day</h2>
+          <p class="card-copy">Choose a city, choose a vibe, and let the agent sequence the day for you.</p>
+
+          <form id="finder-form" class="field-grid">
+            <label>
+              City
+              <input id="city-input" name="city" type="text" placeholder="Shimoga" autocomplete="off" />
+            </label>
+
+            <label>
+              Interest
+              <input id="interest-input" name="interest" type="text" placeholder="waterfalls" autocomplete="off" />
+            </label>
+
+            <div>
+              <div class="helper-text">Quick-select interests</div>
+              <div class="chip-row" id="chip-row">
+                <button class="chip" type="button" data-interest="Waterfalls">Waterfalls</button>
+                <button class="chip" type="button" data-interest="Temples">Temples</button>
+                <button class="chip" type="button" data-interest="Trekking">Trekking</button>
+                <button class="chip" type="button" data-interest="Food">Food</button>
+                <button class="chip" type="button" data-interest="Wildlife">Wildlife</button>
+                <button class="chip" type="button" data-interest="Photography">Photography</button>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="primary-btn" id="submit-btn" type="submit">Find Places</button>
+              <div class="helper-text">Press Enter to search from either input.</div>
+            </div>
+          </form>
+        </aside>
+      </section>
+
+      <section class="status-panels">
+        <div class="loading-box" id="loading-box">
+          <div class="spinner" aria-hidden="true"></div>
+          <div class="loading-copy">
+            <strong>Agent is planning your day</strong>
+            <span id="loading-message">Scanning standout experiences</span>
+          </div>
+        </div>
+
+        <div class="error-box" id="error-box">
+          <div class="error-icon">!</div>
+          <div>
+            <strong>Search failed</strong>
+            <span id="error-message">Please try again.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="results-shell" id="results-shell">
+        <article class="results-card">
+          <div class="section-head">
+            <div>
+              <h2 id="results-title">Top Places</h2>
+              <p id="results-subtitle">Handpicked highlights for your city and travel style.</p>
+            </div>
+            <div class="tagline" id="generated-at">Generated just now</div>
+          </div>
+          <div class="place-grid" id="places-grid"></div>
+        </article>
+
+        <article class="results-card">
+          <div class="section-head">
+            <div>
+              <h2>One-Day Itinerary</h2>
+              <p>Built for an easy, believable day instead of a rushed checklist.</p>
+            </div>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </article>
+
+        <article class="results-card">
+          <div class="section-head">
+            <div>
+              <h2>Travel Tips</h2>
+              <p>Three quick notes to make the visit smoother on the ground.</p>
+            </div>
+          </div>
+          <div class="tips-grid" id="tips-grid"></div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const API_BASE = "http://localhost:8000";
+
+      const loadingMessages = [
+        "Scanning standout experiences",
+        "Comparing traveler-friendly stops",
+        "Balancing scenic value with travel time",
+        "Shaping a realistic one-day route"
+      ];
+
+      const slotMeta = {
+        morning: { label: "Morning", icon: "AM" },
+        midmorning: { label: "Midmorning", icon: "MM" },
+        afternoon: { label: "Afternoon", icon: "PM" },
+        evening: { label: "Evening", icon: "EV" }
+      };
+
+      const form = document.getElementById("finder-form");
+      const cityInput = document.getElementById("city-input");
+      const interestInput = document.getElementById("interest-input");
+      const chipRow = document.getElementById("chip-row");
+      const loadingBox = document.getElementById("loading-box");
+      const loadingMessage = document.getElementById("loading-message");
+      const errorBox = document.getElementById("error-box");
+      const errorMessage = document.getElementById("error-message");
+      const resultsShell = document.getElementById("results-shell");
+      const resultsTitle = document.getElementById("results-title");
+      const resultsSubtitle = document.getElementById("results-subtitle");
+      const generatedAt = document.getElementById("generated-at");
+      const placesGrid = document.getElementById("places-grid");
+      const timeline = document.getElementById("timeline");
+      const tipsGrid = document.getElementById("tips-grid");
+      const submitBtn = document.getElementById("submit-btn");
+
+      let loadingTimer = null;
+      let loadingIndex = 0;
+
+      function startLoading() {
+        loadingIndex = 0;
+        loadingMessage.textContent = loadingMessages[loadingIndex];
+        loadingBox.classList.add("visible");
+        errorBox.classList.remove("visible");
+        submitBtn.disabled = true;
+        loadingTimer = window.setInterval(() => {
+          loadingIndex = (loadingIndex + 1) % loadingMessages.length;
+          loadingMessage.textContent = loadingMessages[loadingIndex];
+        }, 1800);
+      }
+
+      function stopLoading() {
+        if (loadingTimer) {
+          window.clearInterval(loadingTimer);
+          loadingTimer = null;
+        }
+        loadingBox.classList.remove("visible");
+        submitBtn.disabled = false;
+      }
+
+      function showError(message) {
+        errorMessage.textContent = message;
+        errorBox.classList.add("visible");
+      }
+
+      function hideError() { errorBox.classList.remove("visible"); }
+
+      function formatTimestamp(value) {
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+          return value;
+        }
+
+        return parsed.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit"
+        });
+      }
+
+      function renderPlaces(places) {
+        placesGrid.innerHTML = places
+          .map(
+            (place) => `
+              <article class="place-card">
+                <h3>${place.name}</h3>
+                <p>${place.description}</p>
+                <div class="badge-row">
+                  <span class="badge">Best time: ${place.best_time}</span>
+                  <span class="badge">Entry: ${place.entry_fee}</span>
+                </div>
+                <div class="tip-note"><strong>Tip:</strong> ${place.tips}</div>
+              </article>
+            `
+          )
+          .join("");
+      }
+
+      function renderTimeline(itinerary) {
+        const order = ["morning", "midmorning", "afternoon", "evening"];
+        timeline.innerHTML = order
+          .map((slotKey) => {
+            const slot = itinerary[slotKey];
+            const meta = slotMeta[slotKey];
+            return `
+              <article class="timeline-item">
+                <div>
+                  <div class="slot-icon">${meta.icon}</div>
+                  <div class="slot-label">${meta.label}</div>
+                </div>
+                <div>
+                  <h3>${slot.place}</h3>
+                  <div class="slot-time">${slot.time}</div>
+                  <div class="slot-activity">${slot.activity}</div>
+                  <div class="slot-note">${slot.travel_note}</div>
+                </div>
+              </article>
+            `;
+          })
+          .join("");
+      }
+
+      function renderTips(tips) {
+        tipsGrid.innerHTML = tips
+          .map(
+            (tip, index) => `
+              <article class="tip-card">
+                <strong>0${index + 1}</strong>
+                <p>${tip}</p>
+              </article>
+            `
+          )
+          .join("");
+      }
+
+      function renderResults(data) {
+        resultsTitle.textContent = `${data.city} for ${data.interest}`;
+        resultsSubtitle.textContent = "Five place picks, a one-day route, and practical local tips.";
+        generatedAt.textContent = `Generated ${formatTimestamp(data.generated_at)}`;
+        renderPlaces(data.places);
+        renderTimeline(data.itinerary);
+        renderTips(data.travel_tips);
+        resultsShell.classList.add("visible");
+      }
+
+      async function runSearch() {
+        const city = cityInput.value.trim();
+        const interest = interestInput.value.trim();
+
+        hideError();
+        if (!city || !interest) {
+          showError("Please provide both a city and an interest.");
+          return;
+        }
+
+        startLoading();
+        try {
+          const response = await fetch(`${API_BASE}/find-places`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ city, interest })
+          });
+
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(body.detail || "The backend could not complete the request.");
+          }
+
+          renderResults(body);
+        } catch (error) {
+          resultsShell.classList.remove("visible");
+          showError(error.message || "Something went wrong while contacting the API.");
+        } finally {
+          stopLoading();
+        }
+      }
+
+      chipRow.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-interest]");
+        if (!button) {
+          return;
+        }
+
+        [...chipRow.querySelectorAll(".chip")].forEach((chip) => chip.classList.remove("active"));
+        button.classList.add("active");
+        interestInput.value = button.dataset.interest;
+        interestInput.focus();
+      });
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runSearch();
+      });
+    </script>
+  </body>
+</html>

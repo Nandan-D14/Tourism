@@ -1,0 +1,17 @@
+# Keep local-only files and secrets out of Cloud Run source uploads.
+.venv/
+__pycache__/
+_pycache_/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+.env.*
+!.env.example
+.git/
+service-account*.json
+gcp-key*.json

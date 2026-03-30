@@ -1,0 +1,7 @@
+google-adk==1.28.0
+google-genai==1.69.0
+fastapi==0.135.2
+uvicorn[standard]==0.42.0
+python-dotenv==1.2.2
+pydantic==2.12.5
+litellm==1.82.6

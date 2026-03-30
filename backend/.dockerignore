@@ -1,0 +1,17 @@
+# Keep local environments, secrets, caches, and logs out of the container build context.
+.venv/
+__pycache__/
+_pycache_/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+.env.*
+!.env.example
+.git/
+service-account*.json
+gcp-key*.json
