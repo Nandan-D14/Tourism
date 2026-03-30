@@ -22,9 +22,7 @@ class PlaceNameResult(BaseModel):
     city: str
     interest: str
     places: list[str] = Field(
-        min_length=5,
-        max_length=5,
-        description="Exactly five distinct tourist place names.",
+        description="Tourist place names.",
     )
 
 
@@ -36,15 +34,20 @@ class PlaceDetail(BaseModel):
     best_time: str
     entry_fee: str
     tips: str
+    lat: float | None = None
+    lng: float | None = None
+    rating: float | None = None
+    images: list[str] | None = None
+    address: str | None = None
+    nearby_places: list[str] = Field(default_factory=list)
+    nearby_restaurants: list[str] = Field(default_factory=list)
 
 
 class PlaceDetailResult(BaseModel):
     """Structured output for enriched place details."""
 
     places: list[PlaceDetail] = Field(
-        min_length=5,
-        max_length=5,
-        description="Exactly five tourist places with visitor-friendly details.",
+        description="Tourist places with visitor-friendly details and map data.",
     )
 
 
@@ -332,66 +335,51 @@ def _description_for_place(name: str, category: str) -> str:
     return description_map[category]
 
 
-def search_places(city: str, interest: str) -> dict[str, Any]:
-    """Returns top 5 tourist spots for the given city and interest. Use Gemini knowledge - no external API needed.
+def search_places(city: str, interest: str, budget: str = "Mid-range", duration_days: int = 1, group_type: str = "solo") -> dict[str, Any]:
+    """Returns top tourist spots for the given city and interest. Use Gemini knowledge.
 
     Args:
-        city: The city or destination the traveler wants to explore.
-        interest: The travel interest to optimize for, such as waterfalls, food,
-            temples, wildlife, trekking, or photography.
-
-    Returns:
-        A dictionary with the exact shape:
-        {
-            "city": "<city>",
-            "interest": "<interest>",
-            "places": ["Place 1", "Place 2", "Place 3", "Place 4", "Place 5"]
-        }
-        The list must contain exactly five real, distinct, tourist-friendly spots.
+        city: The city or destination.
+        interest: The travel interest.
+        budget: Travel budget.
+        duration_days: Days of travel.
+        group_type: Family, solo, couple, etc.
     """
 
+    places_count = duration_days * 5
     prompt = (
-        f"Find exactly five real tourist places in {city} that best match the interest "
-        f"'{interest}'. Favor places travelers can actually visit. If there are fewer "
-        "than five strong direct matches, include nearby signature spots that still fit "
-        "the traveler's intent. Return only the JSON schema."
+        f"Find exactly {places_count} real tourist places in {city} that best match the interest "
+        f"'{interest}'. Consider a {budget} budget and a {group_type} traveler. "
+        "Favor places travelers can actually visit. Return only the JSON schema."
     )
     return _generate_structured_output(
         prompt=prompt,
         schema=PlaceNameResult,
         system_instruction=(
-            "You are a travel research assistant. Return exactly five place names, keep "
-            "them distinct, and avoid markdown or commentary."
+            f"You are a travel research assistant. Return {places_count} place names, keep "
+            "them distinct, properly accommodating the given budget and group type. Avoid markdown or commentary."
         ),
     )
 
 
-def format_place_details(places: list[str]) -> dict[str, Any]:
-    """Formats raw place data into structured visitor-friendly details.
+def format_place_details(city: str, places: list[str]) -> dict[str, Any]:
+    """Formats raw place data into structured visitor-friendly details, fetching maps info.
 
     Args:
-        places: A list of place names that should be converted into rich tourist
-            cards. The list should contain exactly five place names.
-
-    Returns:
-        A dictionary with the exact shape:
-        {
-            "places": [
-                {
-                    "name": "<place name>",
-                    "description": "<2-3 sentence description>",
-                    "best_time": "<best time to visit>",
-                    "entry_fee": "<fee guidance>",
-                    "tips": "<single practical visitor tip>"
-                }
-            ]
-        }
-        The response must contain exactly five place objects in the same order as input.
+        city: Destination city name.
+        places: A list of place names that should be converted into rich tourist cards.
     """
 
+    # Local import to prevent circular import if needed
+    from tourist_agent.tools.maps_tools import fetch_place_details as fetch_map_details
+
     place_cards = []
-    for place_name in places[:5]:
+    for place_name in places:
         category = _place_category(place_name)
+        
+        # Call the maps tool to get rich location details!
+        map_data = fetch_map_details(place_name, city)
+        
         place_cards.append(
             {
                 "name": place_name,
@@ -399,6 +387,13 @@ def format_place_details(places: list[str]) -> dict[str, Any]:
                 "best_time": _best_time_for_category(category),
                 "entry_fee": _entry_fee_for_category(category),
                 "tips": _tip_for_category(category),
+                "lat": map_data.get("lat"),
+                "lng": map_data.get("lng"),
+                "rating": map_data.get("rating"),
+                "images": map_data.get("images"),
+                "address": map_data.get("address"),
+                "nearby_places": map_data.get("nearby_places") or [],
+                "nearby_restaurants": map_data.get("nearby_restaurants") or [],
             }
         )
 

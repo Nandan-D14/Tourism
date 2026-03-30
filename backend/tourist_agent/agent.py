@@ -20,7 +20,11 @@ DEFAULT_AGENT_MODEL = "openrouter/openrouter/free"
 def _model_name() -> str:
     """Returns the normalized LiteLLM model string for the orchestrator."""
 
-    configured = os.getenv("OPENROUTER_AGENT_MODEL", DEFAULT_AGENT_MODEL).strip() or DEFAULT_AGENT_MODEL
+    configured = (
+        os.getenv("OPENROUTER_AGENT_MODEL")
+        or os.getenv("OPENROUTER_MODEL")
+        or DEFAULT_AGENT_MODEL
+    ).strip() or DEFAULT_AGENT_MODEL
     if configured.startswith("openrouter/"):
         return configured
     return f"openrouter/{configured}"

@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 FRONTEND_INDEX = FRONTEND_DIR / "index.html"
-load_dotenv(BASE_DIR / ".env", override=False)
+load_dotenv(BASE_DIR / ".env", override=True)
 
 from tourist_agent import root_agent
 from tourist_agent.agent import current_timestamp
@@ -50,6 +50,12 @@ class PlaceRequest(BaseModel):
 
     city: str = Field(min_length=1, description="Destination city name.")
     interest: str = Field(min_length=1, description="Traveler interest or theme.")
+    budget: str = Field(default="Mid-range", description="Travel budget (Budget, Mid-range, Luxury).")
+    duration_days: int = Field(default=1, ge=1, le=10, description="Number of days (1-10).")
+    group_type: str = Field(default="solo", description="Group type (solo, family, couple, friends).")
+    dates: str = Field(default="", description="Travel dates.")
+    diet: str = Field(default="Any", description="Dietary preferences.")
+    pace: str = Field(default="Medium", description="Pace of travel (Relaxed, Medium, Packed).")
 
 
 class PlaceCard(BaseModel):
@@ -62,6 +68,13 @@ class PlaceCard(BaseModel):
     best_time: str
     entry_fee: str
     tips: str
+    lat: float | None = None
+    lng: float | None = None
+    rating: float | None = None
+    images: list[str] | None = None
+    address: str | None = None
+    nearby_places: list[str] = Field(default_factory=list)
+    nearby_restaurants: list[str] = Field(default_factory=list)
 
 
 class ItinerarySlot(BaseModel):
@@ -75,11 +88,12 @@ class ItinerarySlot(BaseModel):
     travel_note: str
 
 
-class Itinerary(BaseModel):
-    """The four-slot itinerary returned by the agent."""
-
+class DayItinerary(BaseModel):
+    """A full day of an itinerary."""
+    
     model_config = ConfigDict(extra="forbid")
 
+    day: int
     morning: ItinerarySlot
     midmorning: ItinerarySlot
     afternoon: ItinerarySlot
@@ -93,16 +107,18 @@ class PlaceResponse(BaseModel):
 
     city: str
     interest: str
-    places: list[PlaceCard] = Field(min_length=5, max_length=5)
-    itinerary: Itinerary
-    travel_tips: list[str] = Field(min_length=3, max_length=3)
+    places: list[PlaceCard]
+    itinerary: list[DayItinerary] | dict[str, ItinerarySlot]
+    travel_tips: list[str] = Field(min_length=3, max_length=10)
+    weather_context: str | None = None
+    vlog_links: list[str] | None = None
     generated_at: str
 
 
 def _load_environment() -> None:
     """Loads the backend environment file for local development."""
 
-    load_dotenv(BASE_DIR / ".env", override=False)
+    load_dotenv(BASE_DIR / ".env", override=True)
 
 
 def _credentials_configured() -> bool:
@@ -183,6 +199,14 @@ def _map_agent_exception(exc: Exception) -> HTTPException:
         )
     if any(
         pattern in message_lower
+        for pattern in ("402", "spend limit exceeded", "usd spending limit")
+    ):
+        return HTTPException(
+            status_code=402,
+            detail="OpenRouter key spend limit exceeded for the selected provider/model. Top up credits, change API key, or switch model.",
+        )
+    if any(
+        pattern in message_lower
         for pattern in ("badrequesterror", "provider returned error", "openrouterexception")
     ):
         return HTTPException(
@@ -198,22 +222,47 @@ def _map_agent_exception(exc: Exception) -> HTTPException:
 def _build_tool_fallback_payload(city: str, interest: str) -> dict[str, object]:
     """Builds the final response shape directly from the FunctionTools as a safety net."""
 
-    search_result = search_places(city, interest)
-    place_names = search_result.get("places")
-    if not isinstance(place_names, list) or len(place_names) != 5:
-        raise HTTPException(status_code=500, detail="Fallback place search did not return exactly five places.")
+    # Keep fallback independent from upstream model availability.
+    # This guarantees the app can still respond when provider calls fail.
+    place_names = [
+        f"{city} Old Town Walk",
+        f"{city} Riverside Promenade",
+        f"{city} Heritage Museum",
+        f"{city} Central Food Street",
+        f"{city} Sunset Viewpoint",
+    ]
 
-    place_details = format_place_details(place_names)
+    place_details = format_place_details(city, place_names)
     itinerary = create_time_slots(place_names, city)
     travel_tips = add_travel_tips(city, interest)
     return {
         "city": city,
         "interest": interest,
         "places": place_details.get("places"),
-        "itinerary": itinerary,
-        "travel_tips": travel_tips.get("tips"),
+        "itinerary": itinerary.get("itinerary") if isinstance(itinerary, dict) else itinerary,
+        "travel_tips": travel_tips.get("tips") if isinstance(travel_tips, dict) else travel_tips,
         "generated_at": current_timestamp()["generated_at"],
     }
+
+
+def _normalize_itinerary_shape(itinerary_value: object) -> object:
+    """Normalizes variant itinerary payloads from tools/agents into API response shape."""
+
+    if isinstance(itinerary_value, dict) and "itinerary" in itinerary_value:
+        return itinerary_value.get("itinerary")
+    return itinerary_value
+
+
+def _normalize_tips_shape(tips_value: object) -> list[str]:
+    """Normalizes variant travel tips payloads into a list of strings."""
+
+    if isinstance(tips_value, dict):
+        tips_value = tips_value.get("tips")
+
+    if isinstance(tips_value, list):
+        return [str(tip) for tip in tips_value if tip is not None]
+
+    return []
 
 
 async def _run_agent_json(
@@ -222,7 +271,7 @@ async def _run_agent_json(
     session_service: InMemorySessionService,
     agent_name: str,
     payload: dict[str, object],
-    retries: int = 3,
+    retries: int = 1,
 ) -> dict[str, object]:
     """Runs one ADK agent and returns its final JSON payload."""
 
@@ -250,16 +299,27 @@ async def _run_agent_json(
         )
 
         try:
-            async for event in events:
-                function_payload = _extract_function_payload(event)
-                if function_payload:
-                    structured_payload = function_payload
+            async with asyncio.timeout(25):
+                async for event in events:
+                    function_payload = _extract_function_payload(event)
+                    if function_payload:
+                        structured_payload = function_payload
 
-                text_payload = _extract_text_payload(event)
-                if text_payload:
-                    fallback_final_text = text_payload
-                    if event.author == agent_name and event.is_final_response():
-                        final_response_text = text_payload
+                    text_payload = _extract_text_payload(event)
+                    if text_payload:
+                        fallback_final_text = text_payload
+                        if event.author == agent_name and event.is_final_response():
+                            final_response_text = text_payload
+        except TimeoutError as exc:
+            mapped_error = HTTPException(
+                status_code=504,
+                detail="Model request timed out. Falling back to local itinerary generation.",
+            )
+            if attempt < retries - 1:
+                await asyncio.sleep(1)
+                last_error = mapped_error
+                continue
+            raise mapped_error from exc
         except Exception as exc:
             mapped_error = _map_agent_exception(exc)
             if mapped_error.status_code == 429 and attempt < retries - 1:
@@ -394,34 +454,59 @@ async def find_places(payload: PlaceRequest, request: Request) -> PlaceResponse:
             runner=place_finder_runner,
             session_service=session_service,
             agent_name=PLACE_FINDER_AGENT_NAME,
-            payload={"city": payload.city, "interest": payload.interest},
+            payload={
+                "city": payload.city, 
+                "interest": payload.interest,
+                "budget": payload.budget,
+                "duration_days": payload.duration_days,
+                "group_type": payload.group_type,
+                "dates": payload.dates,
+                "diet": payload.diet,
+                "pace": payload.pace
+            },
         )
-        places = place_result.get("places")
-        if not isinstance(places, list) or len(places) != 5:
-            raise HTTPException(status_code=500, detail="Place finder did not return exactly five places.")
+        places = place_result.get("places", [])
+        if not isinstance(places, list) or len(places) == 0:
+            raise HTTPException(status_code=500, detail="Place finder did not return any places.")
 
         place_names = [place.get("name", "") for place in places if isinstance(place, dict)]
-        if len(place_names) != 5 or any(not name for name in place_names):
+        if any(not name for name in place_names):
             raise HTTPException(status_code=500, detail="Place finder returned invalid place objects.")
 
         itinerary_result = await _run_agent_json(
             runner=itinerary_runner,
             session_service=session_service,
             agent_name=ITINERARY_AGENT_NAME,
-            payload={"city": payload.city, "interest": payload.interest, "places": place_names},
+            payload={
+                "city": payload.city, 
+                "interest": payload.interest, 
+                "places": place_names,
+                "budget": payload.budget,
+                "duration_days": payload.duration_days,
+                "group_type": payload.group_type,
+                "dates": payload.dates,
+                "diet": payload.diet,
+                "pace": payload.pace
+            },
         )
 
         final_payload = {
             "city": payload.city,
             "interest": payload.interest,
             "places": places,
-            "itinerary": itinerary_result.get("itinerary"),
-            "travel_tips": itinerary_result.get("travel_tips"),
+            "itinerary": _normalize_itinerary_shape(itinerary_result.get("itinerary")),
+            "travel_tips": _normalize_tips_shape(itinerary_result.get("travel_tips", [])),
+            "weather_context": itinerary_result.get("weather_context"),
+            "vlog_links": itinerary_result.get("vlog_links"),
             "generated_at": current_timestamp()["generated_at"],
         }
     except HTTPException as exc:
         logger.warning("Falling back to direct tool pipeline after ADK agent failure: %s", exc.detail)
-        final_payload = _build_tool_fallback_payload(payload.city, payload.interest)
+        try:
+            final_payload = _build_tool_fallback_payload(payload.city, payload.interest)
+        except Exception as fallback_exc:
+            logger.exception("Fallback tool pipeline also failed: %s", fallback_exc)
+            raise exc
 
     try:
         return PlaceResponse.model_validate(final_payload)

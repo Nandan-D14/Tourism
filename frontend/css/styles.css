@@ -1,0 +1,80 @@
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background-color: #09090b;
+}
+
+/* Timeline tracking vertical line for the new chat cards */
+.timeline-track {
+    position: relative;
+}
+
+.timeline-track::before {
+    content: '';
+    position: absolute;
+    top: 3.5rem;
+    bottom: 2rem;
+    left: 2rem;
+    width: 2px;
+    background: #27272a; /* Tailwind surfaceAlt */
+    z-index: 0;
+}
+
+@media (max-width: 768px) {
+    .timeline-track::before {
+        left: 1.5rem;
+    }
+}
+
+/* Animations for Chat */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* Minimal Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+}
+
+/* Override Leaflet Map Design for the Dark Theme */
+.leaflet-container {
+    font-family: inherit;
+    /* Soft dark invert so standard map tiles fit the dark theme */
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+.leaflet-popup-content-wrapper {
+    background: #18181b !important; /* surface */
+    color: #fafafa !important;
+    border-radius: 8px;
+    border: 1px solid #27272a;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+.leaflet-popup-tip {
+    background: #18181b !important;
+}

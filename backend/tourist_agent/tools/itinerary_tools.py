@@ -29,11 +29,19 @@ class TravelTipResult(BaseModel):
     """Structured output for practical travel tips."""
 
     tips: list[str] = Field(
-        min_length=3,
-        max_length=3,
-        description="Exactly three practical travel tips.",
+        description="Practical travel tips.",
     )
 
+
+class DayItinerary(BaseModel):
+    day: int
+    morning: ItinerarySlot
+    midmorning: ItinerarySlot
+    afternoon: ItinerarySlot
+    evening: ItinerarySlot
+
+class MultiDayTimeSlotResult(BaseModel):
+    itinerary: list[DayItinerary]
 
 SLOT_ORDER = (
     ("morning", "8:00 AM - 10:00 AM"),
@@ -41,6 +49,22 @@ SLOT_ORDER = (
     ("afternoon", "1:30 PM - 4:00 PM"),
     ("evening", "4:30 PM - 7:00 PM"),
 )
+
+
+def get_additional_context(city: str) -> dict[str, Any]:
+    """Fetches contextual data like weather and recent events or vlogs for a city."""
+    from tourist_agent.tools.weather_tools import get_weather
+    from tourist_agent.tools.media_tools import web_search_events, fetch_youtube_vlogs
+    
+    weather = get_weather(city)
+    events = web_search_events(city)
+    vlogs = fetch_youtube_vlogs(city)
+    
+    return {
+        "weather": weather,
+        "events": events,
+        "vlogs": vlogs
+    }
 
 
 def _activity_for_place(place: str) -> str:
@@ -72,59 +96,48 @@ def _travel_note(index: int, total_stops: int, city: str) -> str:
     return "Allow roughly 20 to 30 minutes for the transfer and a short reset before the next stop."
 
 
-def create_time_slots(places: list[str], city: str) -> dict[str, Any]:
-    """Creates realistic one-day time slots for the provided places and city.
+def create_time_slots(places: list[str], city: str, duration_days: int = 1) -> dict[str, Any]:
+    """Creates realistic time slots given a list of places.
 
     Args:
-        places: Exactly five place names from the place finder stage.
+        places: Place names.
         city: The city the itinerary is being planned for.
-
-    Returns:
-        A dictionary with the exact shape:
-        {
-            "morning": {"time": "...", "place": "...", "activity": "...", "travel_note": "..."},
-            "midmorning": {"time": "...", "place": "...", "activity": "...", "travel_note": "..."},
-            "afternoon": {"time": "...", "place": "...", "activity": "...", "travel_note": "..."},
-            "evening": {"time": "...", "place": "...", "activity": "...", "travel_note": "..."}
-        }
-        Use realistic sequencing and mention travel time between stops.
+        duration_days: Days to plan.
     """
-
-    selected_places = (places[:4] + places[-1:])[:4]
-    itinerary: dict[str, Any] = {}
+    
+    itinerary_days: list[dict[str, Any]] = []
+    
     total_stops = len(SLOT_ORDER)
+    places_per_day = 4
+    
+    for day_index in range(duration_days):
+        day_places = places[day_index * places_per_day : (day_index + 1) * places_per_day]
+        # Pad if not enough places
+        while len(day_places) < places_per_day:
+            day_places.append("Relaxing at hotel or exploring local streets")
+            
+        daily_slot: dict[str, Any] = {"day": day_index + 1}
+        for index, ((slot_name, slot_time), place_name) in enumerate(zip(SLOT_ORDER, day_places, strict=False)):
+            daily_slot[slot_name] = {
+                "time": slot_time,
+                "place": place_name,
+                "activity": _activity_for_place(place_name),
+                "travel_note": _travel_note(index, total_stops, city),
+            }
+        
+        itinerary_days.append(daily_slot)
 
-    for index, ((slot_name, slot_time), place_name) in enumerate(zip(SLOT_ORDER, selected_places, strict=True)):
-        itinerary[slot_name] = {
-            "time": slot_time,
-            "place": place_name,
-            "activity": _activity_for_place(place_name),
-            "travel_note": _travel_note(index, total_stops, city),
-        }
-
-    return TimeSlotResult.model_validate(itinerary).model_dump()
+    return MultiDayTimeSlotResult.model_validate({"itinerary": itinerary_days}).model_dump()
 
 
-def add_travel_tips(city: str, interest: str) -> dict[str, Any]:
-    """Generates 3 practical travel tips for the city and interest.
-
-    Args:
-        city: The destination city.
-        interest: The travel interest that the itinerary is optimized for.
-
-    Returns:
-        A dictionary with the exact shape:
-        {
-            "tips": ["tip 1", "tip 2", "tip 3"]
-        }
-        The list must contain exactly three concise, practical tips.
-    """
+def add_travel_tips(city: str, interest: str, budget: str = "Mid-range", group_type: str = "solo") -> dict[str, Any]:
+    """Generates practical travel tips for the city and interest."""
 
     interest_lower = interest.lower().strip()
     tips = [
         f"Start early in {city} so transfers feel easier and the day stays flexible.",
-        f"Keep small cash, water, and a charged phone handy when exploring {city}.",
-        f"If {interest_lower} is your focus, leave one slot slightly open in case a stop deserves more time than planned.",
+        f"For a {group_type} trip on a {budget} budget, plan your meals ahead.",
+        f"Keep small cash, water, and a charged phone handy when exploring {city}."
     ]
 
     if any(token in interest_lower for token in ("waterfall", "trek", "wildlife", "photography")):
